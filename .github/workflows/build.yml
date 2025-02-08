@@ -30,15 +30,6 @@ jobs:
           unixodbc \
           unixodbc-dev
     
-    - name: 下载并安装 Oracle Instant Client
-      run: |
-        mkdir -p /opt/oracle
-        cd /opt/oracle
-        wget https://download.oracle.com/otn_software/linux/instantclient/instantclient-basiclite-linuxx64.zip
-        unzip instantclient-basiclite-linuxx64.zip
-        sudo sh -c "echo /opt/oracle/instantclient* > /etc/ld.so.conf.d/oracle-instantclient.conf"
-        sudo ldconfig
-    
     - name: 设置 Python
       uses: actions/setup-python@v4
       with:
@@ -51,15 +42,10 @@ jobs:
         pip install pyinstaller
       
     - name: 构建可执行文件
-      env:
-        LD_LIBRARY_PATH: /opt/oracle/instantclient_21_1:$LD_LIBRARY_PATH
       run: |
         pyinstaller --clean \
                    --name dbdiff-exporter \
                    --add-data "src/dbdiff/config/default.yaml:config" \
-                   --add-binary "/opt/oracle/instantclient_21_1/libclntsh.so:." \
-                   --add-binary "/opt/oracle/instantclient_21_1/libnnz21.so:." \
-                   --add-binary "/opt/oracle/instantclient_21_1/libociicus.so:." \
                    --hidden-import uvicorn.logging \
                    --hidden-import uvicorn.loops \
                    --hidden-import uvicorn.loops.auto \
@@ -123,7 +109,7 @@ jobs:
         tar -czf ../dbdiff-exporter-linux.tar.gz dbdiff-exporter/
         
     - name: 上传构建产物
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: dbdiff-exporter-linux
         path: dbdiff-exporter-linux.tar.gz
