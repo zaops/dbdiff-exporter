@@ -1,0 +1,67 @@
+# 数据库配置
+databases:
+  oracle:
+    user: ""
+    password: ""
+    dsn: ""
+    pool_size: 5
+    pool_timeout: 30
+    connect_timeout: 10
+  postgresql:
+    host: ""
+    port: 5432
+    database: ""
+    user: ""
+    password: ""
+    pool_size: 5
+    pool_timeout: 30
+    connect_timeout: 10
+
+# 监控配置
+monitoring:
+  auto_refresh:
+    enabled: true
+    interval: 60  # 秒
+  batch_size: 1000000  # 每批处理的行数
+  parallel_queries: true
+  max_workers: 32
+
+# 表配置
+tables:
+  - name: "table1"
+    primary_key: "id"
+    batch_columns: ["id", "updated_at"]  # 用于分批的列
+    comparison_columns: ["*"]  # 要比较的列，* 表示所有列
+  - name: "table2"
+    primary_key: "id"
+    batch_columns: ["id"]
+    comparison_columns: ["*"]
+
+# 指标配置
+metrics:
+  labels:
+    environment: "production"
+    application: "dbdiff"
+  custom_labels: {}  # 自定义标签
+  collection:
+    include_row_counts: true
+    include_checksum: true
+    include_performance: true
+    include_errors: true
+
+# 日志配置
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "dbdiff.log"
+  max_size: 100  # MB
+  backup_count: 5
+  console_output: true
+
+# 性能调优
+performance:
+  use_parallel_processing: true
+  chunk_size: 100000
+  max_concurrent_tables: 10
+  connection_pool_size: 5
+  query_timeout: 300  # 秒 

@@ -1,0 +1,137 @@
+name: 构建发布包
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  linux-build:
+    runs-on: ubuntu-20.04  # 使用 LTS 版本以确保更好的兼容性
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: 安装系统依赖
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libaio1 \
+          libaio-dev \
+          libpq-dev \
+          python3-dev \
+          build-essential \
+          curl \
+          unzip \
+          alien \
+          unixodbc \
+          unixodbc-dev
+    
+    - name: 下载并安装 Oracle Instant Client
+      run: |
+        mkdir -p /opt/oracle
+        cd /opt/oracle
+        wget https://download.oracle.com/otn_software/linux/instantclient/instantclient-basiclite-linuxx64.zip
+        unzip instantclient-basiclite-linuxx64.zip
+        sudo sh -c "echo /opt/oracle/instantclient* > /etc/ld.so.conf.d/oracle-instantclient.conf"
+        sudo ldconfig
+    
+    - name: 设置 Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.12.5"
+        
+    - name: 安装 Python 依赖
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+      
+    - name: 构建可执行文件
+      env:
+        LD_LIBRARY_PATH: /opt/oracle/instantclient_21_1:$LD_LIBRARY_PATH
+      run: |
+        pyinstaller --clean \
+                   --name dbdiff-exporter \
+                   --add-data "src/dbdiff/config/default.yaml:config" \
+                   --add-binary "/opt/oracle/instantclient_21_1/libclntsh.so:." \
+                   --add-binary "/opt/oracle/instantclient_21_1/libnnz21.so:." \
+                   --add-binary "/opt/oracle/instantclient_21_1/libociicus.so:." \
+                   --hidden-import uvicorn.logging \
+                   --hidden-import uvicorn.loops \
+                   --hidden-import uvicorn.loops.auto \
+                   --hidden-import uvicorn.protocols \
+                   --hidden-import uvicorn.protocols.http \
+                   --hidden-import uvicorn.protocols.http.auto \
+                   --hidden-import uvicorn.protocols.websockets \
+                   --hidden-import uvicorn.protocols.websockets.auto \
+                   --hidden-import uvicorn.lifespan \
+                   --hidden-import uvicorn.lifespan.on \
+                   --hidden-import asyncio \
+                   --hidden-import yaml \
+                   --hidden-import oracledb \
+                   --hidden-import psycopg2 \
+                   src/dbdiff/main.py
+
+    - name: 创建运行脚本
+      run: |
+        cat > dist/start.sh << 'EOL'
+        #!/bin/bash
+        # 设置 Oracle 客户端库路径
+        export LD_LIBRARY_PATH="$PWD:$LD_LIBRARY_PATH"
+        # 启动应用
+        ./dbdiff-exporter
+        EOL
+        chmod +x dist/start.sh
+
+    - name: 打包发布文件
+      run: |
+        mkdir -p release/dbdiff-exporter
+        cp -r dist/* release/dbdiff-exporter/
+        cp README.md release/dbdiff-exporter/ || true
+        cp LICENSE release/dbdiff-exporter/ || true
+        
+        # 创建配置目录和说明文件
+        mkdir -p release/dbdiff-exporter/config
+        cat > release/dbdiff-exporter/README.txt << 'EOL'
+        DBDiff-Exporter 使用说明
+        
+        用于比较和监控不同数据库之间数据一致性的 Prometheus 导出器
+        
+        1. 安装系统依赖（如果尚未安装）：
+           sudo apt-get update
+           sudo apt-get install -y libaio1 libpq5
+        
+        2. 配置：
+           - 将配置文件放在 config 目录中
+           - 默认配置文件名为 config.yaml
+        
+        3. 运行：
+           ./start.sh
+        
+        注意：
+        - 确保给予 start.sh 和 dbdiff-exporter 执行权限：
+          chmod +x start.sh dbdiff-exporter
+        - 默认端口为 5000，可以通过配置文件修改
+        EOL
+        
+        # 创建压缩包
+        cd release
+        tar -czf ../dbdiff-exporter-linux.tar.gz dbdiff-exporter/
+        
+    - name: 上传构建产物
+      uses: actions/upload-artifact@v3
+      with:
+        name: dbdiff-exporter-linux
+        path: dbdiff-exporter-linux.tar.gz
+        
+    - name: 创建 GitHub Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: dbdiff-exporter-linux.tar.gz
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
